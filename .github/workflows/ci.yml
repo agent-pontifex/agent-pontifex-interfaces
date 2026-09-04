@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: "22"
       - name: Validate JSON syntax
-        run: jq -e empty schemas/*.json conformance/fixtures/*.json
+        run: jq empty schemas/*.json conformance/fixtures/*.json
       - name: Compile the independently authored TypeSpec authority
         run: |
           set -euo pipefail
