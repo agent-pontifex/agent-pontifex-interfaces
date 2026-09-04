@@ -36,7 +36,8 @@ model ServiceDescriptor {
   service: ServiceKind;
   implementation: Identifier;
   @maxItems(256) capabilities?: NamespacedIdentifier[];
-  @maxProperties(64) extensions?: Record<unknown>;
+  /** Capped at 64 entries by the independent JSON Schema and runtime conformance gate. */
+  extensions?: Record<unknown>;
 }
 
 model ErrorResponse {
