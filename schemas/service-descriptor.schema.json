@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-pontifex.github.io/schemas/service-descriptor.schema.json",
+  "title": "Agent Pontifex service descriptor",
+  "description": "Served at /.well-known/agent-pontifex. Vendor-neutral: carries no persistence, provider, GitHub, Linear or Fiducia specifics -- those belong in namespaced capabilities and extensions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "protocol",
+    "protocol_versions",
+    "service",
+    "implementation"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "protocol": {
+      "type": "string",
+      "enum": [
+        "agent-pontifex.bridge",
+        "agent-pontifex.coordinator"
+      ]
+    },
+    "protocol_versions": {
+      "$ref": "common.schema.json#/$defs/protocolVersionRange"
+    },
+    "service": {
+      "$ref": "#/$defs/serviceKind"
+    },
+    "implementation": {
+      "$ref": "common.schema.json#/$defs/identifier"
+    },
+    "capabilities": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/namespacedIdentifier"
+      }
+    },
+    "extensions": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "$ref": "common.schema.json#/$defs/namespacedIdentifier"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "service": {
+            "const": "bridge"
+          }
+        },
+        "required": [
+          "service"
+        ]
+      },
+      "then": {
+        "properties": {
+          "protocol": {
+            "const": "agent-pontifex.bridge"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "service": {
+            "const": "coordinator"
+          }
+        },
+        "required": [
+          "service"
+        ]
+      },
+      "then": {
+        "properties": {
+          "protocol": {
+            "const": "agent-pontifex.coordinator"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "serviceKind": {
+      "type": "string",
+      "enum": [
+        "bridge",
+        "coordinator"
+      ],
+      "description": "Peer of TypeSpec enum ServiceKind. The `service` property references this set."
+    }
+  }
+}

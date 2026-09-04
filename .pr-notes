@@ -1,0 +1,16 @@
+**Two co-equal authorities.** `typespec/main.tsp` and `schemas/*.json` are independently
+authored; neither is generated from the other. `tools/check_peer_parity.py` cross-checks
+them and fails closed (DEN-3959).
+
+**It caught a real contract bug on its first run.** `Job.claimed_by`, `lease_expires_at`,
+`result`, `last_error` and `budget_usd` are `Option<T>` in `agent-pontifex-protocol`
+*without* `skip_serializing_if`, so they always serialize as `null`: the key is required,
+the value nullable. The JSON Schema had them as optional keys; the checker refused to pass
+until both authorities agreed.
+
+**No Rust type crate here, deliberately.** The Rust contract is
+`agent-sdk.rs/agent-pontifex-protocol`. A second home would be the DEN-3048 duplicate-family
+defect. This repo is the language-neutral authority; the Rust crate is a consumer.
+
+Verified: peer parity OK (7 enums, 13 models) · conformance OK (invalid fixtures correctly
+rejected) · `tsc --noEmit` clean under `strict` + `exactOptionalPropertyTypes`.

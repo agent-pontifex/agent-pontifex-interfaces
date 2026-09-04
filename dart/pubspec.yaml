@@ -1,0 +1,5 @@
+name: agent_pontifex_interfaces
+description: Agent Pontifex wire contract types (Dart projection). Types only, no implementations.
+version: 0.1.0
+environment:
+  sdk: ">=3.0.0 <4.0.0"

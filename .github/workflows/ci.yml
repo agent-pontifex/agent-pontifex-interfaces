@@ -1,0 +1,41 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install jsonschema
+      # Fail closed: TypeSpec and JSON Schema are co-equal authorities. Any
+      # unexplained divergence blocks publication, merge, release and deployment.
+      - name: Peer authority parity
+        run: python3 tools/check_peer_parity.py
+      - name: Contract conformance
+        run: python3 tools/run_conformance.py
+
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - working-directory: typescript
+        run: npx --yes tsc -p tsconfig.json --noEmit
+
+  dart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dart-lang/setup-dart@v1
+      - working-directory: dart
+        run: |
+          dart pub get
+          dart analyze --fatal-infos

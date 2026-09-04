@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-pontifex.github.io/schemas/bridge.schema.json",
+  "title": "Agent Pontifex bridge domain",
+  "$defs": {
+    "agentKind": { "type": "string", "enum": ["claude","codex","gemini","kimi","qwen","human","other"], "default": "other" },
+    "role": { "type": "string", "enum": ["user","assistant","system","tool"], "default": "user" },
+    "memberRole": { "type": "string", "enum": ["owner","member","observer"], "default": "member" },
+    "presenceKind": { "type": "string", "enum": ["joined","left"] },
+
+    "agent": {
+      "type": "object",
+      "required": ["agent_key"],
+      "properties": {
+        "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
+        "display_name": { "type": "string" },
+        "kind": { "$ref": "#/$defs/agentKind" },
+        "host": { "type": ["string","null"] },
+        "meta": {},
+        "registered_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      }
+    },
+
+    "fileLease": {
+      "type": "object",
+      "description": "Fenced repository-path lease. fencing_token is monotonic per lease line and MUST be compared by the holder before any write.",
+      "required": ["id","repository","path","recursive","agent_key","fencing_token","acquired_at","expires_at"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 },
+        "path": { "type": "string" },
+        "recursive": { "type": "boolean" },
+        "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
+        "purpose": { "type": "string" },
+        "meta": {},
+        "fencing_token": { "type": "integer", "minimum": 0 },
+        "acquired_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      }
+    },
+
+    "message": {
+      "type": "object",
+      "required": ["id","channel","seq","from","content","created_at"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "channel": { "type": "string", "minLength": 1 },
+        "seq": { "type": "integer", "minimum": 0 },
+        "from": { "type": "string", "minLength": 1 },
+        "role": { "$ref": "#/$defs/role" },
+        "content": { "type": "string" },
+        "meta": {},
+        "created_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      }
+    },
+
+    "channel": {
+      "type": "object",
+      "required": ["slug","topic","created_by","created_at","member_count","message_count","embedding_model"],
+      "properties": {
+        "slug": { "type": "string", "minLength": 1 },
+        "topic": { "type": "string" },
+        "topic_summary": { "type": ["string","null"] },
+        "created_by": { "type": "string" },
+        "created_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "member_count": { "type": "integer", "minimum": 0 },
+        "message_count": { "type": "integer", "minimum": 0 },
+        "embedding_model": { "type": "string" },
+        "meta": {}
+      }
+    },
+
+    "event": {
+      "description": "Externally tagged by `type`. Discriminated union over the websocket transport.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "const": "message" } },
+          "$comment": "Remaining properties are those of #/$defs/message, flattened."
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type","channel","agent_key","event","member_count","at"],
+          "properties": {
+            "type": { "const": "presence" },
+            "channel": { "type": "string" },
+            "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
+            "event": { "$ref": "#/$defs/presenceKind" },
+            "member_count": { "type": "integer", "minimum": 0 },
+            "at": { "$ref": "common.schema.json#/$defs/timestamp" }
+          }
+        }
+      ]
+    },
+
+    "acquireFileLeaseRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository","paths","agent_key"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "paths": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
+        "ttl_ms": { "type": "integer", "minimum": 1 },
+        "wait": { "type": "boolean", "default": false }
+      }
+    },
+
+    "postMessageRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from","content"],
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "content": { "type": "string" },
+        "role": { "$ref": "#/$defs/role" },
+        "meta": {}
+      }
+    }
+  }
+}
