@@ -2,7 +2,7 @@
 //
 // This file is an INDEPENDENT, human-authored authority. It is not generated
 // from schemas/*.json and must never be overwritten by a generator. The JSON
-// Schema tree under schemas/ is its co-equal peer. tools/check_peer_parity.py
+// Schema tree under schemas/ is its co-equal peer. tools/check-peer-parity.rs
 // compares the two and fails closed on any unexplained divergence.
 //
 // Authority chain (see DEN-3959):
@@ -47,7 +47,7 @@ model ErrorResponse {
 }
 
 namespace Bridge {
-  enum AgentKind { claude, codex, gemini, kimi, qwen, human, other }
+  enum AgentKind { chatgpt, claude, codex, grok, gemini, kimi, qwen, human, service, other }
   enum Role { user, assistant, system, tool }
   enum MemberRole { owner, member, observer }
   enum PresenceKind { joined, left }
@@ -163,5 +163,101 @@ namespace Coordinator {
     error?: string;
     retryable?: boolean = false;
     retry_delay_seconds?: int64 = 30;
+  }
+}
+
+namespace Realtime {
+  enum MessageKind {
+    command,
+    event,
+    observation,
+    proposal,
+    decision,
+    handoff,
+    heartbeat,
+    ack,
+    error,
+    tool_call,
+    tool_result,
+    review_request,
+    review_result,
+  }
+
+  enum DeliveryMode { at_most_once, at_least_once }
+
+  enum AckStatus {
+    accepted,
+    rejected,
+    duplicate,
+    expired,
+    unauthorized,
+    stale_lease,
+  }
+
+  model AgentRef {
+    agent_key: Identifier;
+    kind: Bridge.AgentKind;
+    instance_id: Identifier;
+    display_name?: string;
+  }
+
+  model TraceContext {
+    @pattern("^[0-9a-f]{32}$") trace_id: string;
+    @pattern("^[0-9a-f]{16}$") span_id: string;
+    trace_flags?: string;
+    trace_state?: string;
+  }
+
+  model LeaseRef {
+    lease_id: string;
+    repository: string;
+    path: string;
+    fencing_token: uint64;
+    expires_at: Timestamp;
+  }
+
+  model RealtimeEnvelope {
+    schema_version: "agent-pontifex/realtime-envelope/v1";
+    message_id: string;
+    conversation_id: string;
+    correlation_id?: string;
+    causation_id?: string;
+    sequence: uint64;
+    sender: AgentRef;
+    @maxItems(64) recipients: AgentRef[];
+    kind: MessageKind;
+    delivery: DeliveryMode;
+    idempotency_key: string;
+    trace?: TraceContext;
+    lease?: LeaseRef;
+    payload: Record<unknown>;
+    created_at: Timestamp;
+    expires_at?: Timestamp;
+  }
+
+  model Acknowledgement {
+    schema_version: "agent-pontifex/acknowledgement/v1";
+    acknowledgement_id: string;
+    acknowledged_message_id: string;
+    conversation_id: string;
+    sender: AgentRef;
+    status: AckStatus;
+    reason_code?: string;
+    observed_sequence: uint64;
+    created_at: Timestamp;
+  }
+
+  model WorkHandoff {
+    schema_version: "agent-pontifex/work-handoff/v1";
+    handoff_id: string;
+    conversation_id: string;
+    from_agent: AgentRef;
+    to_agent: AgentRef;
+    objective: string;
+    @maxItems(256) completed_work: string[];
+    @maxItems(256) remaining_work: string[];
+    @maxItems(256) evidence_uris: string[];
+    lease?: LeaseRef;
+    created_at: Timestamp;
   }
 }
