@@ -214,7 +214,10 @@ fn valid_identifier(value: &str) -> bool {
 fn validate_descriptor(source: &str) -> Vec<String> {
     let mut errors = Vec::new();
     let outer = matching_body(source, 0, b'{', b'}');
-    let keys = outer.as_deref().and_then(top_level_object_keys);
+    let keys = match outer {
+        Ok(body) => top_level_object_keys(&body),
+        Err(error) => Err(error),
+    };
     let required = BTreeSet::from([
         "schema_version".to_owned(),
         "protocol".to_owned(),
