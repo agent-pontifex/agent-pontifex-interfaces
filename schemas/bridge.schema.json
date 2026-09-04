@@ -3,11 +3,25 @@
   "$id": "https://agent-pontifex.github.io/schemas/bridge.schema.json",
   "title": "Agent Pontifex bridge domain",
   "$defs": {
-    "agentKind": { "type": "string", "enum": ["chatgpt","claude","codex","grok","gemini","kimi","qwen","human","service","other"], "default": "other" },
-    "role": { "type": "string", "enum": ["user","assistant","system","tool"], "default": "user" },
-    "memberRole": { "type": "string", "enum": ["owner","member","observer"], "default": "member" },
-    "presenceKind": { "type": "string", "enum": ["joined","left"] },
-
+    "agentKind": {
+      "type": "string",
+      "enum": ["chatgpt", "claude", "codex", "grok", "gemini", "kimi", "qwen", "human", "service", "other"],
+      "default": "other"
+    },
+    "role": {
+      "type": "string",
+      "enum": ["user", "assistant", "system", "tool"],
+      "default": "user"
+    },
+    "memberRole": {
+      "type": "string",
+      "enum": ["owner", "member", "observer"],
+      "default": "member"
+    },
+    "presenceKind": {
+      "type": "string",
+      "enum": ["joined", "left"]
+    },
     "agent": {
       "type": "object",
       "required": ["agent_key"],
@@ -15,16 +29,15 @@
         "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
         "display_name": { "type": "string" },
         "kind": { "$ref": "#/$defs/agentKind" },
-        "host": { "type": ["string","null"] },
+        "host": { "type": ["string", "null"] },
         "meta": {},
         "registered_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
     },
-
     "fileLease": {
       "type": "object",
       "description": "Fenced repository-path lease. fencing_token is monotonic per lease line and MUST be compared by the holder before any write.",
-      "required": ["id","repository","path","recursive","agent_key","fencing_token","acquired_at","expires_at"],
+      "required": ["id", "repository", "path", "recursive", "agent_key", "fencing_token", "acquired_at", "expires_at"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "repository": { "type": "string", "minLength": 1 },
@@ -38,10 +51,24 @@
         "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
     },
-
+    "channel": {
+      "type": "object",
+      "required": ["slug", "topic", "created_by", "created_at", "member_count", "message_count", "embedding_model"],
+      "properties": {
+        "slug": { "type": "string", "minLength": 1 },
+        "topic": { "type": "string" },
+        "topic_summary": { "type": ["string", "null"] },
+        "created_by": { "type": "string" },
+        "created_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "member_count": { "type": "integer", "minimum": 0 },
+        "message_count": { "type": "integer", "minimum": 0 },
+        "embedding_model": { "type": "string" },
+        "meta": {}
+      }
+    },
     "message": {
       "type": "object",
-      "required": ["id","channel","seq","from","content","created_at"],
+      "required": ["id", "channel", "seq", "from", "content", "created_at"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "channel": { "type": "string", "minLength": 1 },
@@ -53,25 +80,8 @@
         "created_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
     },
-
-    "channel": {
-      "type": "object",
-      "required": ["slug","topic","created_by","created_at","member_count","message_count","embedding_model"],
-      "properties": {
-        "slug": { "type": "string", "minLength": 1 },
-        "topic": { "type": "string" },
-        "topic_summary": { "type": ["string","null"] },
-        "created_by": { "type": "string" },
-        "created_at": { "$ref": "common.schema.json#/$defs/timestamp" },
-        "member_count": { "type": "integer", "minimum": 0 },
-        "message_count": { "type": "integer", "minimum": 0 },
-        "embedding_model": { "type": "string" },
-        "meta": {}
-      }
-    },
-
     "event": {
-      "description": "Externally tagged by `type`. Discriminated union over the websocket transport.",
+      "description": "Externally tagged by type. Discriminated union over the websocket transport.",
       "oneOf": [
         {
           "type": "object",
@@ -82,7 +92,7 @@
         {
           "type": "object",
           "additionalProperties": false,
-          "required": ["type","channel","agent_key","event","member_count","at"],
+          "required": ["type", "channel", "agent_key", "event", "member_count", "at"],
           "properties": {
             "type": { "const": "presence" },
             "channel": { "type": "string" },
@@ -94,11 +104,10 @@
         }
       ]
     },
-
     "acquireFileLeaseRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["repository","paths","agent_key"],
+      "required": ["repository", "paths", "agent_key"],
       "properties": {
         "repository": { "type": "string", "minLength": 1 },
         "paths": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
@@ -107,11 +116,10 @@
         "wait": { "type": "boolean", "default": false }
       }
     },
-
     "postMessageRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["from","content"],
+      "required": ["from", "content"],
       "properties": {
         "from": { "type": "string", "minLength": 1 },
         "content": { "type": "string" },
@@ -119,26 +127,22 @@
         "meta": {}
       }
     },
-
     "messageKind": {
       "type": "string",
-      "enum": ["command","event","observation","proposal","decision","handoff","heartbeat","ack","error","tool_call","tool_result","review_request","review_result"]
+      "enum": ["command", "event", "observation", "proposal", "decision", "handoff", "heartbeat", "ack", "error", "tool_call", "tool_result", "review_request", "review_result"]
     },
-
     "deliveryMode": {
       "type": "string",
-      "enum": ["at_most_once","at_least_once"]
+      "enum": ["at_most_once", "at_least_once"]
     },
-
     "ackStatus": {
       "type": "string",
-      "enum": ["accepted","rejected","duplicate","expired","unauthorized","stale_lease"]
+      "enum": ["accepted", "rejected", "duplicate", "expired", "unauthorized", "stale_lease"]
     },
-
     "agentRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["agent_key","kind","instance_id"],
+      "required": ["agent_key", "kind", "instance_id"],
       "properties": {
         "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
         "kind": { "$ref": "#/$defs/agentKind" },
@@ -146,11 +150,10 @@
         "display_name": { "type": "string" }
       }
     },
-
     "traceContext": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["trace_id","span_id"],
+      "required": ["trace_id", "span_id"],
       "properties": {
         "trace_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
         "span_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
@@ -158,11 +161,10 @@
         "trace_state": { "type": "string" }
       }
     },
-
     "leaseRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["lease_id","repository","path","fencing_token","expires_at"],
+      "required": ["lease_id", "repository", "path", "fencing_token", "expires_at"],
       "properties": {
         "lease_id": { "type": "string", "minLength": 1 },
         "repository": { "type": "string", "minLength": 1 },
@@ -171,11 +173,10 @@
         "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
     },
-
     "realtimeEnvelope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema_version","message_id","conversation_id","sequence","sender","recipients","kind","delivery","idempotency_key","payload","created_at"],
+      "required": ["schema_version", "message_id", "conversation_id", "sequence", "sender", "recipients", "kind", "delivery", "idempotency_key", "payload", "created_at"],
       "properties": {
         "schema_version": { "const": "agent-pontifex/realtime-envelope/v1" },
         "message_id": { "type": "string", "minLength": 1 },
@@ -195,11 +196,10 @@
         "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
     },
-
     "acknowledgement": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema_version","acknowledgement_id","acknowledged_message_id","conversation_id","sender","status","observed_sequence","created_at"],
+      "required": ["schema_version", "acknowledgement_id", "acknowledged_message_id", "conversation_id", "sender", "status", "observed_sequence", "created_at"],
       "properties": {
         "schema_version": { "const": "agent-pontifex/acknowledgement/v1" },
         "acknowledgement_id": { "type": "string", "minLength": 1 },
@@ -212,11 +212,10 @@
         "created_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
     },
-
     "workHandoff": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["schema_version","handoff_id","conversation_id","from_agent","to_agent","objective","completed_work","remaining_work","evidence_uris","created_at"],
+      "required": ["schema_version", "handoff_id", "conversation_id", "from_agent", "to_agent", "objective", "completed_work", "remaining_work", "evidence_uris", "created_at"],
       "properties": {
         "schema_version": { "const": "agent-pontifex/work-handoff/v1" },
         "handoff_id": { "type": "string", "minLength": 1 },
