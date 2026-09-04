@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-pontifex.github.io/schemas/coordinator.schema.json",
+  "title": "Agent Pontifex coordinator domain",
+  "$defs": {
+    "jobStatus": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "running",
+        "succeeded",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "completionOutcome": {
+      "type": "string",
+      "enum": [
+        "succeeded",
+        "failed"
+      ]
+    },
+    "job": {
+      "type": "object",
+      "required": [
+        "attempts",
+        "available_at",
+        "budget_usd",
+        "claimed_by",
+        "created_at",
+        "id",
+        "last_error",
+        "lease_expires_at",
+        "max_attempts",
+        "org",
+        "payload",
+        "priority",
+        "repo",
+        "result",
+        "status",
+        "task_type",
+        "updated_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "org": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {},
+        "priority": {
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/jobStatus"
+        },
+        "created_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "updated_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "available_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "claimed_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lease_expires_at": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "result": {},
+        "last_error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "budget_usd": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "createJobRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "org",
+        "repo",
+        "task_type"
+      ],
+      "properties": {
+        "org": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "payload": {},
+        "priority": {
+          "type": "integer",
+          "default": 0
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3
+        },
+        "available_at": {
+          "$ref": "common.schema.json#/$defs/timestamp"
+        },
+        "budget_usd": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "claimJobRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "worker_id"
+      ],
+      "properties": {
+        "worker_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "orgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "repositories": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "task_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "lease_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 120
+        }
+      }
+    },
+    "completeJobRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "worker_id",
+        "outcome"
+      ],
+      "properties": {
+        "worker_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "$ref": "#/$defs/completionOutcome"
+        },
+        "result": {},
+        "error": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean",
+          "default": false
+        },
+        "retry_delay_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 30
+        }
+      }
+    }
+  }
+}

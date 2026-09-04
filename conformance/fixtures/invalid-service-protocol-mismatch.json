@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "protocol": "agent-pontifex.coordinator",
+  "protocol_versions": { "min_major": 1, "max_major": 1 },
+  "service": "bridge",
+  "implementation": "agent-pontifex-community",
+  "capabilities": [],
+  "extensions": {}
+}

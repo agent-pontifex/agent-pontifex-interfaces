@@ -1,0 +1,11 @@
+{
+  "name": "@agent-pontifex/interfaces",
+  "version": "0.1.0",
+  "description": "Agent Pontifex wire contract types (TypeScript projection). Types only.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "src"],
+  "scripts": { "build": "tsc -p tsconfig.json", "check": "tsc -p tsconfig.json --noEmit" }
+}
