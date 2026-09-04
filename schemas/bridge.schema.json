@@ -3,7 +3,7 @@
   "$id": "https://agent-pontifex.github.io/schemas/bridge.schema.json",
   "title": "Agent Pontifex bridge domain",
   "$defs": {
-    "agentKind": { "type": "string", "enum": ["claude","codex","gemini","kimi","qwen","human","other"], "default": "other" },
+    "agentKind": { "type": "string", "enum": ["chatgpt","claude","codex","grok","gemini","kimi","qwen","human","service","other"], "default": "other" },
     "role": { "type": "string", "enum": ["user","assistant","system","tool"], "default": "user" },
     "memberRole": { "type": "string", "enum": ["owner","member","observer"], "default": "member" },
     "presenceKind": { "type": "string", "enum": ["joined","left"] },
@@ -117,6 +117,118 @@
         "content": { "type": "string" },
         "role": { "$ref": "#/$defs/role" },
         "meta": {}
+      }
+    },
+
+    "messageKind": {
+      "type": "string",
+      "enum": ["command","event","observation","proposal","decision","handoff","heartbeat","ack","error","tool_call","tool_result","review_request","review_result"]
+    },
+
+    "deliveryMode": {
+      "type": "string",
+      "enum": ["at_most_once","at_least_once"]
+    },
+
+    "ackStatus": {
+      "type": "string",
+      "enum": ["accepted","rejected","duplicate","expired","unauthorized","stale_lease"]
+    },
+
+    "agentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_key","kind","instance_id"],
+      "properties": {
+        "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
+        "kind": { "$ref": "#/$defs/agentKind" },
+        "instance_id": { "$ref": "common.schema.json#/$defs/identifier" },
+        "display_name": { "type": "string" }
+      }
+    },
+
+    "traceContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trace_id","span_id"],
+      "properties": {
+        "trace_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+        "span_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+        "trace_flags": { "type": "string" },
+        "trace_state": { "type": "string" }
+      }
+    },
+
+    "leaseRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lease_id","repository","path","fencing_token","expires_at"],
+      "properties": {
+        "lease_id": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 },
+        "path": { "type": "string" },
+        "fencing_token": { "type": "integer", "minimum": 0 },
+        "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      }
+    },
+
+    "realtimeEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version","message_id","conversation_id","sequence","sender","recipients","kind","delivery","idempotency_key","payload","created_at"],
+      "properties": {
+        "schema_version": { "const": "agent-pontifex/realtime-envelope/v1" },
+        "message_id": { "type": "string", "minLength": 1 },
+        "conversation_id": { "type": "string", "minLength": 1 },
+        "correlation_id": { "type": "string", "minLength": 1 },
+        "causation_id": { "type": "string", "minLength": 1 },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "sender": { "$ref": "#/$defs/agentRef" },
+        "recipients": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/agentRef" } },
+        "kind": { "$ref": "#/$defs/messageKind" },
+        "delivery": { "$ref": "#/$defs/deliveryMode" },
+        "idempotency_key": { "type": "string", "minLength": 1 },
+        "trace": { "$ref": "#/$defs/traceContext" },
+        "lease": { "$ref": "#/$defs/leaseRef" },
+        "payload": { "type": "object" },
+        "created_at": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      }
+    },
+
+    "acknowledgement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version","acknowledgement_id","acknowledged_message_id","conversation_id","sender","status","observed_sequence","created_at"],
+      "properties": {
+        "schema_version": { "const": "agent-pontifex/acknowledgement/v1" },
+        "acknowledgement_id": { "type": "string", "minLength": 1 },
+        "acknowledged_message_id": { "type": "string", "minLength": 1 },
+        "conversation_id": { "type": "string", "minLength": 1 },
+        "sender": { "$ref": "#/$defs/agentRef" },
+        "status": { "$ref": "#/$defs/ackStatus" },
+        "reason_code": { "type": "string" },
+        "observed_sequence": { "type": "integer", "minimum": 0 },
+        "created_at": { "$ref": "common.schema.json#/$defs/timestamp" }
+      }
+    },
+
+    "workHandoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version","handoff_id","conversation_id","from_agent","to_agent","objective","completed_work","remaining_work","evidence_uris","created_at"],
+      "properties": {
+        "schema_version": { "const": "agent-pontifex/work-handoff/v1" },
+        "handoff_id": { "type": "string", "minLength": 1 },
+        "conversation_id": { "type": "string", "minLength": 1 },
+        "from_agent": { "$ref": "#/$defs/agentRef" },
+        "to_agent": { "$ref": "#/$defs/agentRef" },
+        "objective": { "type": "string", "minLength": 1 },
+        "completed_work": { "type": "array", "maxItems": 256, "items": { "type": "string" } },
+        "remaining_work": { "type": "array", "maxItems": 256, "items": { "type": "string" } },
+        "evidence_uris": { "type": "array", "maxItems": 256, "items": { "type": "string" } },
+        "lease": { "$ref": "#/$defs/leaseRef" },
+        "created_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
     }
   }
