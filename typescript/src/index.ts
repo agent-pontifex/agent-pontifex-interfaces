@@ -2,7 +2,7 @@
 //
 // Types only. No transport, no persistence, no product behaviour. This file is a
 // PROJECTION of the two authorities (schemas/*.json and typespec/main.tsp) and is
-// covered by tools/check_peer_parity.py; do not add fields here that neither
+// covered by tools/check-peer-parity.rs; do not add fields here that neither
 // authority declares.
 
 export const PROTOCOL_SCHEMA_VERSION = 1 as const;
@@ -38,7 +38,17 @@ export interface ErrorResponse {
   details?: unknown;
 }
 
-export type AgentKind = "claude" | "codex" | "gemini" | "kimi" | "qwen" | "human" | "other";
+export type AgentKind =
+  | "chatgpt"
+  | "claude"
+  | "codex"
+  | "grok"
+  | "gemini"
+  | "kimi"
+  | "qwen"
+  | "human"
+  | "service"
+  | "other";
 export type Role = "user" | "assistant" | "system" | "tool";
 export type MemberRole = "owner" | "member" | "observer";
 export type PresenceKind = "joined" | "left";
@@ -113,6 +123,99 @@ export interface PostMessageRequest {
   content: string;
   role?: Role;
   meta?: unknown;
+}
+
+export type MessageKind =
+  | "command"
+  | "event"
+  | "observation"
+  | "proposal"
+  | "decision"
+  | "handoff"
+  | "heartbeat"
+  | "ack"
+  | "error"
+  | "tool_call"
+  | "tool_result"
+  | "review_request"
+  | "review_result";
+
+export type DeliveryMode = "at_most_once" | "at_least_once";
+export type AckStatus =
+  | "accepted"
+  | "rejected"
+  | "duplicate"
+  | "expired"
+  | "unauthorized"
+  | "stale_lease";
+
+export interface AgentRef {
+  agent_key: string;
+  kind: AgentKind;
+  instance_id: string;
+  display_name?: string;
+}
+
+export interface TraceContext {
+  /** Lowercase 16-byte W3C trace identifier, encoded as 32 hex characters. */
+  trace_id: string;
+  /** Lowercase 8-byte W3C span identifier, encoded as 16 hex characters. */
+  span_id: string;
+  trace_flags?: string;
+  trace_state?: string;
+}
+
+export interface LeaseRef {
+  lease_id: string;
+  repository: string;
+  path: string;
+  fencing_token: number;
+  expires_at: Timestamp;
+}
+
+export interface RealtimeEnvelope {
+  schema_version: "agent-pontifex/realtime-envelope/v1";
+  message_id: string;
+  conversation_id: string;
+  correlation_id?: string;
+  causation_id?: string;
+  sequence: number;
+  sender: AgentRef;
+  recipients: AgentRef[];
+  kind: MessageKind;
+  delivery: DeliveryMode;
+  idempotency_key: string;
+  trace?: TraceContext;
+  lease?: LeaseRef;
+  payload: Record<string, unknown>;
+  created_at: Timestamp;
+  expires_at?: Timestamp;
+}
+
+export interface Acknowledgement {
+  schema_version: "agent-pontifex/acknowledgement/v1";
+  acknowledgement_id: string;
+  acknowledged_message_id: string;
+  conversation_id: string;
+  sender: AgentRef;
+  status: AckStatus;
+  reason_code?: string;
+  observed_sequence: number;
+  created_at: Timestamp;
+}
+
+export interface WorkHandoff {
+  schema_version: "agent-pontifex/work-handoff/v1";
+  handoff_id: string;
+  conversation_id: string;
+  from_agent: AgentRef;
+  to_agent: AgentRef;
+  objective: string;
+  completed_work: string[];
+  remaining_work: string[];
+  evidence_uris: string[];
+  lease?: LeaseRef;
+  created_at: Timestamp;
 }
 
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
