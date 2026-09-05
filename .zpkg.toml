@@ -28,11 +28,11 @@ dir = "schemas"
 adapter = "none"
 
 [targets.typescript]
-dir = "typescript"
+dir = "langs/typescript"
 adapter = "node"
 
 [targets.dart]
-dir = "dart"
+dir = "langs/dart"
 adapter = "dart"
 
 [targets.conformance]
