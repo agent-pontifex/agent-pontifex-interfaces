@@ -5,8 +5,9 @@ Repository-specific rules:
 
 1. **Never generate one authority from the other.** `typespec/main.tsp` and `schemas/*.json`
    are co-equal and independently authored. A generator that overwrites either is a defect.
-2. **Never add a field to a projection alone.** `typescript/` and `dart/` follow the
-   authorities. Change the authorities first, re-run parity, then update projections.
+2. **Never add a field to a projection alone.** `langs/typescript/` and `langs/dart/`
+   follow the authorities. Change the authorities first, re-run parity, then update
+   projections.
 3. **Do not add a Rust type crate here.** The Rust contract is
    `agent-sdk.rs/agent-pontifex-protocol`. A second home recreates DEN-3048.
 4. **Types only.** No transport, persistence, provider or product behaviour, and no

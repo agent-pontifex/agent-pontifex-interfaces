@@ -21,8 +21,10 @@ anything it cannot parse as a failure rather than skipping it silently.
 
 ## Language projections
 
-`typescript/` and `dart/` are **projections**, not authorities. Do not add a field to a
-projection that neither authority declares.
+`langs/typescript/` and `langs/dart/` are **projections**, not authorities. Language
+projections stay together under `langs/` so they cannot collide with authority and
+package-level directories. Do not add a field to a projection that neither authority
+declares.
 
 The Rust contract already lives in
 [`agent-sdk.rs/agent-pontifex-protocol`](https://github.com/agent-pontifex/agent-sdk.rs)
@@ -54,7 +56,7 @@ as optional keys is a contract break.
 pip install jsonschema
 python3 tools/check_peer_parity.py     # authority parity, fails closed
 python3 tools/run_conformance.py       # fixtures; invalid-*.json MUST be rejected
-cd typescript && npx tsc -p tsconfig.json --noEmit
+cd langs/typescript && npx tsc -p tsconfig.json --noEmit
 cd ../dart && dart analyze --fatal-infos
 ```
 
