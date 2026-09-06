@@ -1,0 +1,66 @@
+name: peer-authority-canary
+
+on:
+  pull_request:
+    paths:
+      - 'schema-authority/canary/**'
+      - '.github/workflows/peer-authority-canary.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'schema-authority/canary/**'
+      - '.github/workflows/peer-authority-canary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peer-authority-canary-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    name: compare independent TypeSpec and JSON Schema canary authorities
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Verify checked-out revision
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.16.0
+
+      - name: Compare independent peer authorities
+        uses: ORESoftware/typespec-json-schema-validator@282883afc4645f3303ed746bdb1e1571475724c5
+        with:
+          typespec: schema-authority/canary/main.tsp
+          schema: schema-authority/canary/authored.schema.json
+          report: .typespec-json-schema-validator/report.json
+          sarif: .typespec-json-schema-validator/report.sarif
+          output_dir: .typespec-json-schema-validator/generated
+          quiet: 'true'
+
+      - name: Retain deterministic parity evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: peer-authority-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .typespec-json-schema-validator
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
