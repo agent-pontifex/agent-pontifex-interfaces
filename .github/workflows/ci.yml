@@ -14,27 +14,54 @@ concurrency:
 
 jobs:
   contract:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout exact head without persisted credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-      - name: Install Python 3.12
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
-          python-version: "3.12"
-      - name: Install pinned JSON Schema validator
-        run: python3 -m pip install --disable-pip-version-check jsonschema==4.26.0
+          toolchain: 1.91.0
+      - name: Install Node.js 22 for the TypeSpec compiler
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Validate JSON syntax
+        run: jq empty schemas/*.json conformance/fixtures/*.json
+      - name: Compile the independently authored TypeSpec authority
+        run: |
+          set -euo pipefail
+          npm ci --prefix typespec --ignore-scripts --no-audit --no-fund
+          typespec/node_modules/.bin/tsp compile typespec/main.tsp --no-emit
+      - name: Emit ephemeral TypeSpec JSON Schema B
+        run: |
+          set -euo pipefail
+          typespec/node_modules/.bin/tsp compile typespec/main.tsp \
+            --emit @typespec/json-schema \
+            --option @typespec/json-schema.emitAllModels=true \
+            --option @typespec/json-schema.file-type=json \
+            --option @typespec/json-schema.int64-strategy=number \
+            --option @typespec/json-schema.seal-object-schemas=true \
+            --output-dir target/typespec-json-schema
+      - name: Compile Rust contract gates with warnings denied
+        run: |
+          set -euo pipefail
+          RUSTFLAGS="-D warnings" cargo build --locked --all-targets
       # Fail closed: TypeSpec and JSON Schema are co-equal authorities. Any
       # unexplained divergence blocks publication, merge, release and deployment.
       - name: Peer authority parity
-        run: python3 tools/check_peer_parity.py
+        run: cargo run --locked --bin check-peer-parity -- . target/typespec-json-schema/@typespec/json-schema
+      - name: Contract-gate unit tests
+        run: cargo test --locked --all-targets
       - name: Contract conformance
-        run: python3 tools/run_conformance.py
+        run: cargo run --locked --bin run-conformance -- . target/typespec-json-schema/@typespec/json-schema
 
   typescript:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout exact head without persisted credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -49,7 +76,8 @@ jobs:
         run: npx --yes --package typescript@5.9.2 tsc -p tsconfig.json --noEmit
 
   dart:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout exact head without persisted credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

@@ -1,0 +1,25 @@
+{
+  "schema_version": "agent-pontifex/realtime-envelope/v1",
+  "message_id": "message-nested-type",
+  "conversation_id": "conversation-001",
+  "sequence": 1,
+  "sender": {
+    "agent_key": 42,
+    "kind": "service",
+    "instance_id": "bridge-1"
+  },
+  "recipients": [
+    {
+      "agent_key": "agent.coordinator",
+      "kind": "service",
+      "instance_id": "coordinator-1"
+    }
+  ],
+  "kind": "event",
+  "delivery": "at_least_once",
+  "idempotency_key": "message-nested-type",
+  "payload": {
+    "event": "job.created"
+  },
+  "created_at": "2026-09-05T00:00:00Z"
+}

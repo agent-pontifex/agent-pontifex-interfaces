@@ -22,6 +22,7 @@
     },
     "job": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "attempts",
         "available_at",
