@@ -526,6 +526,20 @@ fn run(root: &Path, generated_root: &Path) -> Vec<String> {
         Err(error) => return vec![error],
     };
     let mut findings = Vec::new();
+    let expected_generated: BTreeSet<String> = ENUM_PAIRS
+        .iter()
+        .chain(MODEL_PAIRS)
+        .chain(SCALAR_PAIRS)
+        .map(|pair| pair.name.to_owned())
+        .chain(["RecordUnknown".to_owned()])
+        .collect();
+    for name in generated.keys() {
+        if !expected_generated.contains(name) {
+            findings.push(format!(
+                "generated TypeSpec schema {name} has no configured authored JSON Schema peer"
+            ));
+        }
+    }
 
     for pair in ENUM_PAIRS {
         let authored_value = match authored
