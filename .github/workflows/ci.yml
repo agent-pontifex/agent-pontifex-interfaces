@@ -72,7 +72,7 @@ jobs:
         with:
           node-version: "22"
       - name: Type-check with the pinned TypeScript compiler
-        working-directory: typescript
+        working-directory: langs/typescript
         run: npx --yes --package typescript@5.9.2 tsc -p tsconfig.json --noEmit
 
   dart:
@@ -86,7 +86,7 @@ jobs:
       - name: Install the Dart SDK
         uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1
       - name: Resolve and analyze the Dart projection
-        working-directory: dart
+        working-directory: langs/dart
         run: |
           set -euo pipefail
           dart pub get

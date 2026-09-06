@@ -1,0 +1,43 @@
+[package]
+org = "agent-pontifex"
+name = "agent-pontifex-interfaces"
+version = "0.1.0"
+description = "Peer TypeSpec and JSON Schema authorities with generated TypeScript and Dart projections for Agent Pontifex"
+license = "MIT"
+keywords = ["interfaces", "typespec", "json-schema", "agents", "polyglot"]
+
+[package.repository]
+vcs = "git"
+url = "https://github.com/agent-pontifex/agent-pontifex-interfaces"
+
+[publish]
+include_readme = true
+tag_format = "v{version}"
+smoke_test = "python3 \"$ZED_PKG_TEST_TARGET/tools/check_peer_parity.py\" && python3 \"$ZED_PKG_TEST_TARGET/tools/run_conformance.py\""
+exclude = [".env", ".env.*", ".zed/**", ".zed-pack/**", "**/node_modules/**", "**/.dart_tool/**", "**/dist/**", "**/*.log", ".DS_Store"]
+
+[targets.repository]
+dir = "."
+
+[targets.typespec]
+dir = "typespec"
+adapter = "none"
+
+[targets.json-schema]
+dir = "schemas"
+adapter = "none"
+
+[targets.typescript]
+dir = "langs/typescript"
+adapter = "node"
+
+[targets.dart]
+dir = "langs/dart"
+adapter = "dart"
+
+[targets.conformance]
+dir = "conformance"
+adapter = "none"
+
+[scripts]
+test = "python3 tools/check_peer_parity.py && python3 tools/run_conformance.py"

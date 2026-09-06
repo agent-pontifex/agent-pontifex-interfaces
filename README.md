@@ -23,8 +23,10 @@ shapes. An unexplained mismatch blocks publication, merge, release and deploymen
 
 ## Language projections
 
-`typescript/` and `dart/` are **projections**, not authorities. Do not add a field to a
-projection that neither authority declares.
+`langs/typescript/` and `langs/dart/` are **projections**, not authorities. Language
+projections stay together under `langs/` so they cannot collide with authority and
+package-level directories. Do not add a field to a projection that neither authority
+declares.
 
 The Rust contract already lives in
 [`agent-sdk.rs/agent-pontifex-protocol`](https://github.com/agent-pontifex/agent-sdk.rs)
@@ -67,9 +69,9 @@ cargo run --locked --bin check-peer-parity -- \
   . target/typespec-json-schema/@typespec/json-schema
 cargo run --locked --bin run-conformance -- \
   . target/typespec-json-schema/@typespec/json-schema
-npx --yes --package typescript@5.9.2 tsc -p typescript/tsconfig.json --noEmit
-dart pub get --directory dart
-dart analyze --fatal-infos dart
+npx --yes --package typescript@5.9.2 tsc -p langs/typescript/tsconfig.json --noEmit
+dart pub get --directory langs/dart
+dart analyze --fatal-infos langs/dart
 ```
 
 Fixtures named `invalid-*.json` are expected to be **rejected**. A fixture that should fail

@@ -1,4 +1,4 @@
 target/
 typespec/node_modules/
-dart/.dart_tool/
-typescript/node_modules/
+langs/dart/.dart_tool/
+langs/typescript/node_modules/
