@@ -24,6 +24,7 @@
     },
     "agent": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["agent_key"],
       "properties": {
         "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
@@ -36,6 +37,7 @@
     },
     "fileLease": {
       "type": "object",
+      "additionalProperties": false,
       "description": "Fenced repository-path lease. fencing_token is monotonic per lease line and MUST be compared by the holder before any write.",
       "required": ["id", "repository", "path", "recursive", "agent_key", "fencing_token", "acquired_at", "expires_at"],
       "properties": {
@@ -46,13 +48,14 @@
         "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
         "purpose": { "type": "string" },
         "meta": {},
-        "fencing_token": { "type": "integer", "minimum": 0 },
+        "fencing_token": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
         "acquired_at": { "$ref": "common.schema.json#/$defs/timestamp" },
         "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
     },
     "channel": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["slug", "topic", "created_by", "created_at", "member_count", "message_count", "embedding_model"],
       "properties": {
         "slug": { "type": "string", "minLength": 1 },
@@ -60,19 +63,20 @@
         "topic_summary": { "type": ["string", "null"] },
         "created_by": { "type": "string" },
         "created_at": { "$ref": "common.schema.json#/$defs/timestamp" },
-        "member_count": { "type": "integer", "minimum": 0 },
-        "message_count": { "type": "integer", "minimum": 0 },
+        "member_count": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "message_count": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
         "embedding_model": { "type": "string" },
         "meta": {}
       }
     },
     "message": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["id", "channel", "seq", "from", "content", "created_at"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "channel": { "type": "string", "minLength": 1 },
-        "seq": { "type": "integer", "minimum": 0 },
+        "seq": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
         "from": { "type": "string", "minLength": 1 },
         "role": { "$ref": "#/$defs/role" },
         "content": { "type": "string" },
@@ -98,7 +102,7 @@
             "channel": { "type": "string" },
             "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
             "event": { "$ref": "#/$defs/presenceKind" },
-            "member_count": { "type": "integer", "minimum": 0 },
+            "member_count": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
             "at": { "$ref": "common.schema.json#/$defs/timestamp" }
           }
         }
@@ -112,7 +116,7 @@
         "repository": { "type": "string", "minLength": 1 },
         "paths": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
         "agent_key": { "$ref": "common.schema.json#/$defs/identifier" },
-        "ttl_ms": { "type": "integer", "minimum": 1 },
+        "ttl_ms": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
         "wait": { "type": "boolean", "default": false }
       }
     },
@@ -169,7 +173,7 @@
         "lease_id": { "type": "string", "minLength": 1 },
         "repository": { "type": "string", "minLength": 1 },
         "path": { "type": "string" },
-        "fencing_token": { "type": "integer", "minimum": 0 },
+        "fencing_token": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
         "expires_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
     },
@@ -183,7 +187,7 @@
         "conversation_id": { "type": "string", "minLength": 1 },
         "correlation_id": { "type": "string", "minLength": 1 },
         "causation_id": { "type": "string", "minLength": 1 },
-        "sequence": { "type": "integer", "minimum": 0 },
+        "sequence": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
         "sender": { "$ref": "#/$defs/agentRef" },
         "recipients": { "type": "array", "maxItems": 64, "items": { "$ref": "#/$defs/agentRef" } },
         "kind": { "$ref": "#/$defs/messageKind" },
@@ -208,7 +212,7 @@
         "sender": { "$ref": "#/$defs/agentRef" },
         "status": { "$ref": "#/$defs/ackStatus" },
         "reason_code": { "type": "string" },
-        "observed_sequence": { "type": "integer", "minimum": 0 },
+        "observed_sequence": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
         "created_at": { "$ref": "common.schema.json#/$defs/timestamp" }
       }
     },

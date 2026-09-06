@@ -1,0 +1,4 @@
+target/
+typespec/node_modules/
+dart/.dart_tool/
+typescript/node_modules/

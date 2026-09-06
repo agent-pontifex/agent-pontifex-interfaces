@@ -1,0 +1,18 @@
+{
+  "schema_version": "agent-pontifex/realtime-envelope/v1",
+  "message_id": "message-001",
+  "message_id": "message-duplicate",
+  "conversation_id": "conversation-001",
+  "sequence": 1,
+  "sender": {
+    "agent_key": "agent.bridge",
+    "kind": "service",
+    "instance_id": "bridge-1"
+  },
+  "recipients": [],
+  "kind": "event",
+  "delivery": "at_least_once",
+  "idempotency_key": "message-001",
+  "payload": {},
+  "created_at": "2026-09-05T00:00:00Z"
+}

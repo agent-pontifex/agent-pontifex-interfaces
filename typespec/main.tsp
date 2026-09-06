@@ -9,6 +9,10 @@
 //   TypeSpec           -> IR_T -> SQL_T -> Protobuf/proto3 -> gRPC -> wire clients
 //   JSON Schema/OpenAPI-> IR_J -> interfaces/types/validators -> SQL_J -> HTTP/write clients
 
+import "@typespec/json-schema";
+
+using JsonSchema;
+
 namespace AgentPontifex;
 
 /** Lowercase ASCII identifier, 1..128 chars, [a-z0-9._-]. */
@@ -16,10 +20,11 @@ namespace AgentPontifex;
 scalar Identifier extends string;
 
 /** Identifier that must carry a namespace segment (contains a dot). */
-@pattern("^[a-z0-9._-]*\\.[a-z0-9._-]*$")
+@pattern("\\.")
 scalar NamespacedIdentifier extends Identifier;
 
 /** RFC 3339 timestamp. The wire type is always a string, never a number. */
+@format("date-time")
 scalar Timestamp extends string;
 
 model ProtocolVersionRange {
@@ -35,7 +40,7 @@ model ServiceDescriptor {
   protocol_versions: ProtocolVersionRange;
   service: ServiceKind;
   implementation: Identifier;
-  @maxItems(256) capabilities?: NamespacedIdentifier[];
+  @maxItems(256) @uniqueItems capabilities?: NamespacedIdentifier[];
   // Capped at 64 entries by the independent JSON Schema and runtime conformance gate.
   extensions?: Record<unknown>;
 }
@@ -63,23 +68,23 @@ namespace Bridge {
   }
 
   model FileLease {
-    id: string;
-    repository: string;
+    @minLength(1) id: string;
+    @minLength(1) repository: string;
     path: string;
     recursive: boolean;
     agent_key: Identifier;
     purpose?: string;
     meta?: unknown;
-    fencing_token: uint64;
+    @minValue(1) @maxValue(9007199254740991) fencing_token: uint64;
     acquired_at: Timestamp;
     expires_at: Timestamp;
   }
 
   model Message {
-    id: string;
-    channel: string;
-    seq: uint64;
-    from: string;
+    @minLength(1) id: string;
+    @minLength(1) channel: string;
+    @minValue(0) @maxValue(9007199254740991) seq: uint64;
+    @minLength(1) from: string;
     role?: Role;
     content: string;
     meta?: unknown;
@@ -87,27 +92,27 @@ namespace Bridge {
   }
 
   model Channel {
-    slug: string;
+    @minLength(1) slug: string;
     topic: string;
     topic_summary?: string | null;
     created_by: string;
     created_at: Timestamp;
-    member_count: uint32;
-    message_count: uint64;
+    @minValue(0) @maxValue(4294967295) member_count: uint32;
+    @minValue(0) @maxValue(9007199254740991) message_count: uint64;
     embedding_model: string;
     meta?: unknown;
   }
 
   model AcquireFileLeaseRequest {
-    repository: string;
+    @minLength(1) repository: string;
     @minItems(1) paths: string[];
     agent_key: Identifier;
-    ttl_ms?: uint64;
+    @minValue(1) @maxValue(9007199254740991) ttl_ms?: uint64;
     wait?: boolean = false;
   }
 
   model PostMessageRequest {
-    from: string;
+    @minLength(1) from: string;
     content: string;
     role?: Role;
     meta?: unknown;
@@ -119,10 +124,10 @@ namespace Coordinator {
   enum CompletionOutcome { succeeded, failed }
 
   model Job {
-    id: string;
-    org: string;
-    repo: string;
-    task_type: string;
+    @minLength(1) id: string;
+    @minLength(1) org: string;
+    @minLength(1) repo: string;
+    @minLength(1) task_type: string;
     payload: unknown;
     priority: int64;
     status: JobStatus;
@@ -131,39 +136,39 @@ namespace Coordinator {
     available_at: Timestamp;
     claimed_by: string | null;
     lease_expires_at: Timestamp | null;
-    attempts: int64;
-    max_attempts: int64;
+    @minValue(0) attempts: int64;
+    @minValue(1) max_attempts: int64;
     result: unknown | null;
     last_error: string | null;
     budget_usd: float64 | null;
   }
 
   model CreateJobRequest {
-    org: string;
-    repo: string;
-    task_type: string;
+    @minLength(1) org: string;
+    @minLength(1) repo: string;
+    @minLength(1) task_type: string;
     payload?: unknown;
     priority?: int64 = 0;
-    max_attempts?: int64 = 3;
+    @minValue(1) max_attempts?: int64 = 3;
     available_at?: Timestamp;
-    budget_usd?: float64;
+    @minValue(0) budget_usd?: float64;
   }
 
   model ClaimJobRequest {
-    worker_id: string;
+    @minLength(1) worker_id: string;
     orgs?: string[];
     repositories?: string[];
     task_types?: string[];
-    lease_seconds?: int64 = 120;
+    @minValue(1) lease_seconds?: int64 = 120;
   }
 
   model CompleteJobRequest {
-    worker_id: string;
+    @minLength(1) worker_id: string;
     outcome: CompletionOutcome;
     result?: unknown;
     error?: string;
     retryable?: boolean = false;
-    retry_delay_seconds?: int64 = 30;
+    @minValue(0) retry_delay_seconds?: int64 = 30;
   }
 }
 
@@ -210,25 +215,25 @@ namespace Realtime {
   }
 
   model LeaseRef {
-    lease_id: string;
-    repository: string;
+    @minLength(1) lease_id: string;
+    @minLength(1) repository: string;
     path: string;
-    fencing_token: uint64;
+    @minValue(1) @maxValue(9007199254740991) fencing_token: uint64;
     expires_at: Timestamp;
   }
 
   model RealtimeEnvelope {
     schema_version: "agent-pontifex/realtime-envelope/v1";
-    message_id: string;
-    conversation_id: string;
-    correlation_id?: string;
-    causation_id?: string;
-    sequence: uint64;
+    @minLength(1) message_id: string;
+    @minLength(1) conversation_id: string;
+    @minLength(1) correlation_id?: string;
+    @minLength(1) causation_id?: string;
+    @minValue(0) @maxValue(9007199254740991) sequence: uint64;
     sender: AgentRef;
     @maxItems(64) recipients: AgentRef[];
     kind: MessageKind;
     delivery: DeliveryMode;
-    idempotency_key: string;
+    @minLength(1) idempotency_key: string;
     trace?: TraceContext;
     lease?: LeaseRef;
     payload: Record<unknown>;
@@ -238,23 +243,23 @@ namespace Realtime {
 
   model Acknowledgement {
     schema_version: "agent-pontifex/acknowledgement/v1";
-    acknowledgement_id: string;
-    acknowledged_message_id: string;
-    conversation_id: string;
+    @minLength(1) acknowledgement_id: string;
+    @minLength(1) acknowledged_message_id: string;
+    @minLength(1) conversation_id: string;
     sender: AgentRef;
     status: AckStatus;
     reason_code?: string;
-    observed_sequence: uint64;
+    @minValue(0) @maxValue(9007199254740991) observed_sequence: uint64;
     created_at: Timestamp;
   }
 
   model WorkHandoff {
     schema_version: "agent-pontifex/work-handoff/v1";
-    handoff_id: string;
-    conversation_id: string;
+    @minLength(1) handoff_id: string;
+    @minLength(1) conversation_id: string;
     from_agent: AgentRef;
     to_agent: AgentRef;
-    objective: string;
+    @minLength(1) objective: string;
     @maxItems(256) completed_work: string[];
     @maxItems(256) remaining_work: string[];
     @maxItems(256) evidence_uris: string[];

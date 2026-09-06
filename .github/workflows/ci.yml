@@ -34,32 +34,30 @@ jobs:
       - name: Compile the independently authored TypeSpec authority
         run: |
           set -euo pipefail
-          npm install --prefix "$RUNNER_TEMP/typespec" \
-            --ignore-scripts --no-audit --no-fund \
-            @typespec/compiler@1.15.0
-          "$RUNNER_TEMP/typespec/node_modules/.bin/tsp" compile \
-            typespec/main.tsp --no-emit
+          npm ci --prefix typespec --ignore-scripts --no-audit --no-fund
+          typespec/node_modules/.bin/tsp compile typespec/main.tsp --no-emit
+      - name: Emit ephemeral TypeSpec JSON Schema B
+        run: |
+          set -euo pipefail
+          typespec/node_modules/.bin/tsp compile typespec/main.tsp \
+            --emit @typespec/json-schema \
+            --option @typespec/json-schema.emitAllModels=true \
+            --option @typespec/json-schema.file-type=json \
+            --option @typespec/json-schema.int64-strategy=number \
+            --option @typespec/json-schema.seal-object-schemas=true \
+            --output-dir target/typespec-json-schema
       - name: Compile Rust contract gates with warnings denied
         run: |
           set -euo pipefail
-          mkdir -p target/contract-tools
-          rustc --edition=2024 -D warnings \
-            tools/check-peer-parity.rs \
-            -o target/contract-tools/check-peer-parity
-          rustc --edition=2024 -D warnings \
-            tools/run-conformance.rs \
-            -o target/contract-tools/run-conformance
-          rustc --edition=2024 -D warnings --test \
-            tools/run-conformance.rs \
-            -o target/contract-tools/run-conformance-tests
+          RUSTFLAGS="-D warnings" cargo build --locked --all-targets
       # Fail closed: TypeSpec and JSON Schema are co-equal authorities. Any
       # unexplained divergence blocks publication, merge, release and deployment.
       - name: Peer authority parity
-        run: target/contract-tools/check-peer-parity .
+        run: cargo run --locked --bin check-peer-parity -- . target/typespec-json-schema/@typespec/json-schema
       - name: Contract-gate unit tests
-        run: target/contract-tools/run-conformance-tests
+        run: cargo test --locked --all-targets
       - name: Contract conformance
-        run: target/contract-tools/run-conformance .
+        run: cargo run --locked --bin run-conformance -- . target/typespec-json-schema/@typespec/json-schema
 
   typescript:
     runs-on: ubuntu-24.04

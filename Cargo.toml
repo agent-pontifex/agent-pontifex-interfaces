@@ -1,0 +1,20 @@
+[package]
+name = "agent-pontifex-contract-gates"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "Pinned Rust contract parity and JSON Schema conformance gates"
+
+[dependencies]
+jsonschema = { version = "=0.53.0", default-features = false }
+serde = "=1.0.229"
+serde_json = "=1.0.151"
+
+[[bin]]
+name = "check-peer-parity"
+path = "tools/check-peer-parity.rs"
+
+[[bin]]
+name = "run-conformance"
+path = "tools/run-conformance.rs"

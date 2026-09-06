@@ -1,354 +1,515 @@
+use jsonschema::{Draft, Registry};
+use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-fn matching_body(source: &str, search_from: usize, open: u8, close: u8) -> Result<String, String> {
-    let bytes = source.as_bytes();
-    let start = bytes
-        .iter()
-        .enumerate()
-        .skip(search_from)
-        .find_map(|(index, byte)| (*byte == open).then_some(index))
-        .ok_or_else(|| format!("missing delimiter {}", open as char))?;
-    let mut depth = 0usize;
-    let mut body_start = None;
-    let mut in_string = false;
-    let mut escaped = false;
+const SCHEMA_BASE: &str = "https://agent-pontifex.github.io/schemas/";
 
-    for (index, byte) in bytes.iter().copied().enumerate().skip(start) {
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if byte == b'\\' {
-                escaped = true;
-            } else if byte == b'"' {
-                in_string = false;
-            }
-            continue;
-        }
-        if byte == b'"' {
-            in_string = true;
-        } else if byte == open {
-            depth += 1;
-            if depth == 1 {
-                body_start = Some(index + 1);
-            }
-        } else if byte == close {
-            if depth == 0 {
-                return Err("unbalanced closing delimiter".to_owned());
-            }
-            depth -= 1;
-            if depth == 0 {
-                let body_start = body_start.ok_or_else(|| "missing body start".to_owned())?;
-                return Ok(source[body_start..index].to_owned());
-            }
-        }
+struct UniqueJson(Value);
+
+struct UniqueJsonVisitor;
+
+impl<'de> Visitor<'de> for UniqueJsonVisitor {
+    type Value = UniqueJson;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a JSON value without duplicate object keys")
     }
 
-    Err("unterminated delimited body".to_owned())
+    fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(UniqueJson(Value::Bool(value)))
+    }
+
+    fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(UniqueJson(Value::Number(value.into())))
+    }
+
+    fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(UniqueJson(Value::Number(value.into())))
+    }
+
+    fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        serde_json::Number::from_f64(value)
+            .map(|number| UniqueJson(Value::Number(number)))
+            .ok_or_else(|| E::custom("non-finite numbers are not valid JSON"))
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(UniqueJson(Value::String(value.to_owned())))
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(UniqueJson(Value::String(value)))
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(UniqueJson(Value::Null))
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        Ok(UniqueJson(Value::Null))
+    }
+
+    fn visit_seq<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut values = Vec::new();
+        while let Some(UniqueJson(value)) = access.next_element()? {
+            values.push(value);
+        }
+        Ok(UniqueJson(Value::Array(values)))
+    }
+
+    fn visit_map<A>(self, mut access: A) -> Result<Self::Value, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut keys = BTreeSet::new();
+        let mut values = serde_json::Map::new();
+        while let Some(key) = access.next_key::<String>()? {
+            if !keys.insert(key.clone()) {
+                return Err(de::Error::custom(format!(
+                    "duplicate JSON object key {key:?}"
+                )));
+            }
+            let UniqueJson(value) = access.next_value()?;
+            values.insert(key, value);
+        }
+        Ok(UniqueJson(Value::Object(values)))
+    }
 }
 
-fn value_start(source: &str, key: &str) -> Result<usize, String> {
-    let marker = format!("\"{key}\"");
-    let start = source
-        .find(&marker)
-        .ok_or_else(|| format!("missing key {key}"))?;
-    source[start + marker.len()..]
-        .find(':')
-        .map(|offset| start + marker.len() + offset + 1)
-        .ok_or_else(|| format!("missing colon after {key}"))
+impl<'de> Deserialize<'de> for UniqueJson {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(UniqueJsonVisitor)
+    }
 }
 
-fn json_string(source: &str, key: &str) -> Result<String, String> {
-    let bytes = source.as_bytes();
-    let mut index = value_start(source, key)?;
-    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
-        index += 1;
-    }
-    if bytes.get(index) != Some(&b'"') {
-        return Err(format!("{key} must be a string"));
-    }
-    index += 1;
-    let start = index;
-    let mut escaped = false;
-    while index < bytes.len() {
-        let byte = bytes[index];
-        if escaped {
-            escaped = false;
-        } else if byte == b'\\' {
-            escaped = true;
-        } else if byte == b'"' {
-            return Ok(source[start..index].to_owned());
+fn parse_json_text(text: &str) -> Result<Value, String> {
+    let mut deserializer = serde_json::Deserializer::from_str(text);
+    let UniqueJson(value) = UniqueJson::deserialize(&mut deserializer)
+        .map_err(|error| format!("invalid JSON: {error}"))?;
+    deserializer
+        .end()
+        .map_err(|error| format!("trailing JSON data: {error}"))?;
+    Ok(value)
+}
+
+fn parse_json(path: &Path) -> Result<Value, String> {
+    let text = fs::read_to_string(path)
+        .map_err(|error| format!("failed reading {}: {error}", path.display()))?;
+    parse_json_text(&text).map_err(|error| format!("{}: {error}", path.display()))
+}
+
+fn string_field<'a>(value: &'a Value, field: &str) -> Result<&'a str, String> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("schema field {field:?} must be a string"))
+}
+
+fn load_schema_resources(root: &Path) -> Result<Vec<(String, Value)>, String> {
+    let schema_directory = root.join("schemas");
+    let mut paths = fs::read_dir(&schema_directory)
+        .map_err(|error| format!("failed reading {}: {error}", schema_directory.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("failed enumerating schemas: {error}"))?
+        .into_iter()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
+        .collect::<Vec<PathBuf>>();
+    paths.sort();
+
+    let mut resources = Vec::new();
+    for path in paths {
+        let schema = parse_json(&path)?;
+        if !jsonschema::draft202012::meta::is_valid(&schema) {
+            return Err(format!(
+                "{} is not a valid Draft 2020-12 schema",
+                path.display()
+            ));
         }
-        index += 1;
+        let id = string_field(&schema, "$id")?.to_owned();
+        resources.push((id, schema));
     }
-    Err(format!("unterminated string for {key}"))
+    Ok(resources)
 }
 
-fn json_u64(source: &str, key: &str) -> Result<u64, String> {
-    let bytes = source.as_bytes();
-    let mut index = value_start(source, key)?;
-    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
-        index += 1;
+fn build_registry(resources: &[(String, Value)]) -> Result<Registry<'_>, String> {
+    let mut registry = Registry::new();
+    for (id, schema) in resources {
+        registry = registry
+            .add(id.as_str(), schema)
+            .map_err(|error| format!("failed registering {id}: {error}"))?;
     }
-    let start = index;
-    while index < bytes.len() && bytes[index].is_ascii_digit() {
-        index += 1;
-    }
-    if start == index {
-        return Err(format!("{key} must be a non-negative integer"));
-    }
-    source[start..index]
-        .parse::<u64>()
-        .map_err(|error| format!("invalid integer for {key}: {error}"))
+    registry
+        .prepare()
+        .map_err(|error| format!("failed preparing schema registry: {error}"))
 }
 
-fn json_string_array(source: &str, key: &str) -> Result<Vec<String>, String> {
-    let start = value_start(source, key)?;
-    let body = matching_body(source, start, b'[', b']')?;
-    let bytes = body.as_bytes();
-    let mut values = Vec::new();
-    let mut index = 0usize;
-    while index < bytes.len() {
-        if bytes[index] != b'"' {
-            index += 1;
-            continue;
-        }
-        index += 1;
-        let start = index;
-        let mut escaped = false;
-        while index < bytes.len() {
-            let byte = bytes[index];
-            if escaped {
-                escaped = false;
-            } else if byte == b'\\' {
-                escaped = true;
-            } else if byte == b'"' {
-                break;
-            }
-            index += 1;
-        }
-        if index >= bytes.len() {
-            return Err(format!("unterminated array string for {key}"));
-        }
-        values.push(body[start..index].to_owned());
-        index += 1;
-    }
-    Ok(values)
-}
-
-fn top_level_object_keys(body: &str) -> Result<BTreeSet<String>, String> {
-    let bytes = body.as_bytes();
-    let mut keys = BTreeSet::new();
-    let mut index = 0usize;
-    let mut object_depth = 0usize;
-    let mut array_depth = 0usize;
-
-    while index < bytes.len() {
-        match bytes[index] {
-            b'{' => {
-                object_depth += 1;
-                index += 1;
-            }
-            b'}' => {
-                object_depth = object_depth.saturating_sub(1);
-                index += 1;
-            }
-            b'[' => {
-                array_depth += 1;
-                index += 1;
-            }
-            b']' => {
-                array_depth = array_depth.saturating_sub(1);
-                index += 1;
-            }
-            b'"' => {
-                index += 1;
-                let start = index;
-                let mut escaped = false;
-                while index < bytes.len() {
-                    let byte = bytes[index];
-                    if escaped {
-                        escaped = false;
-                    } else if byte == b'\\' {
-                        escaped = true;
-                    } else if byte == b'"' {
-                        break;
-                    }
-                    index += 1;
-                }
-                if index >= bytes.len() {
-                    return Err("unterminated object key".to_owned());
-                }
-                let candidate = &body[start..index];
-                index += 1;
-                let mut cursor = index;
-                while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
-                    cursor += 1;
-                }
-                if object_depth == 0 && array_depth == 0 && bytes.get(cursor) == Some(&b':') {
-                    keys.insert(candidate.to_owned());
-                }
-            }
-            _ => index += 1,
-        }
-    }
-    Ok(keys)
-}
-
-fn json_object_keys(source: &str, key: &str) -> Result<BTreeSet<String>, String> {
-    let start = value_start(source, key)?;
-    let body = matching_body(source, start, b'{', b'}')?;
-    top_level_object_keys(&body)
-}
-
-fn valid_identifier(value: &str) -> bool {
+fn valid_namespaced_identifier(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
-        && value
-            .chars()
-            .all(|ch| ch == '_' || ch == '-' || ch == '.' || ch.is_ascii_lowercase() || ch.is_ascii_digit())
+        && value.contains('.')
+        && value.chars().all(|character| {
+            character == '_'
+                || character == '-'
+                || character == '.'
+                || character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+        })
 }
 
-fn validate_descriptor(source: &str) -> Vec<String> {
+fn descriptor_invariants(document: &Value) -> Vec<String> {
     let mut errors = Vec::new();
-    let outer = matching_body(source, 0, b'{', b'}');
-    let keys = match outer {
-        Ok(body) => top_level_object_keys(&body),
-        Err(error) => Err(error),
-    };
-    let required = BTreeSet::from([
-        "schema_version".to_owned(),
-        "protocol".to_owned(),
-        "protocol_versions".to_owned(),
-        "service".to_owned(),
-        "implementation".to_owned(),
-    ]);
-    let allowed = BTreeSet::from([
-        "schema_version".to_owned(),
-        "protocol".to_owned(),
-        "protocol_versions".to_owned(),
-        "service".to_owned(),
-        "implementation".to_owned(),
-        "capabilities".to_owned(),
-        "extensions".to_owned(),
-    ]);
-    match keys {
-        Ok(keys) => {
-            for key in required.difference(&keys) {
-                errors.push(format!("missing required field {key}"));
-            }
-            for key in keys.difference(&allowed) {
-                errors.push(format!("unknown top-level field {key}"));
-            }
-        }
-        Err(error) => errors.push(error),
-    }
-
-    match json_u64(source, "schema_version") {
-        Ok(1) => {}
-        Ok(value) => errors.push(format!("unsupported schema_version {value}")),
-        Err(error) => errors.push(error),
-    }
-
-    let protocol = json_string(source, "protocol");
-    let service = json_string(source, "service");
-    match (&service, &protocol) {
-        (Ok(service), Ok(protocol)) if service == "bridge" && protocol == "agent-pontifex.bridge" => {}
-        (Ok(service), Ok(protocol)) if service == "coordinator" && protocol == "agent-pontifex.coordinator" => {}
-        (Ok(service), Ok(protocol)) => errors.push(format!(
+    let service = document.get("service").and_then(Value::as_str);
+    let protocol = document.get("protocol").and_then(Value::as_str);
+    match (service, protocol) {
+        (Some("bridge"), Some("agent-pontifex.bridge"))
+        | (Some("coordinator"), Some("agent-pontifex.coordinator")) => {}
+        (Some(service), Some(protocol)) => errors.push(format!(
             "service/protocol mismatch: service={service}, protocol={protocol}"
         )),
-        (Err(error), _) | (_, Err(error)) => errors.push(error.clone()),
+        _ => {}
     }
-
-    match json_string(source, "implementation") {
-        Ok(value) if valid_identifier(&value) => {}
-        Ok(value) => errors.push(format!("invalid implementation identifier {value:?}")),
-        Err(error) => errors.push(error),
-    }
-
-    let versions = value_start(source, "protocol_versions")
-        .and_then(|start| matching_body(source, start, b'{', b'}'));
-    match versions {
-        Ok(versions) => {
-            let min = json_u64(&versions, "min_major");
-            let max = json_u64(&versions, "max_major");
-            match (min, max) {
-                (Ok(min), Ok(max)) if (1..=65_535).contains(&min) && min <= max && max <= 65_535 => {}
-                (Ok(min), Ok(max)) => errors.push(format!("invalid protocol range {min}..={max}")),
-                (Err(error), _) | (_, Err(error)) => errors.push(error),
+    let capabilities = document.get("capabilities").and_then(Value::as_array);
+    if let Some(capabilities) = capabilities {
+        if capabilities.len() > 256 {
+            errors.push("too many capabilities".to_owned());
+        }
+        if capabilities
+            .windows(2)
+            .any(|pair| pair[0].as_str().unwrap_or_default() > pair[1].as_str().unwrap_or_default())
+        {
+            errors.push("capabilities must be sorted for deterministic negotiation".to_owned());
+        }
+        let mut unique = BTreeSet::new();
+        for capability in capabilities {
+            let value = capability.as_str().unwrap_or_default();
+            if !valid_namespaced_identifier(value) {
+                errors.push(format!("invalid or unnamespaced capability {value:?}"));
+            }
+            if !unique.insert(value.to_owned()) {
+                errors.push(format!("duplicate capability {value:?}"));
             }
         }
-        Err(error) => errors.push(error),
     }
-
-    match json_string_array(source, "capabilities") {
-        Ok(capabilities) => {
-            if capabilities.len() > 256 {
-                errors.push("too many capabilities".to_owned());
-            }
-            let mut sorted = capabilities.clone();
-            sorted.sort();
-            if capabilities != sorted {
-                errors.push("capabilities must be sorted for deterministic negotiation".to_owned());
-            }
-            let mut unique = BTreeSet::new();
-            for capability in capabilities {
-                if !valid_identifier(&capability) || !capability.contains('.') {
-                    errors.push(format!("invalid or unnamespaced capability {capability:?}"));
-                }
-                if !unique.insert(capability.clone()) {
-                    errors.push(format!("duplicate capability {capability:?}"));
-                }
+    if let Some(extensions) = document.get("extensions").and_then(Value::as_object) {
+        if extensions.len() > 64 {
+            errors.push("too many extensions".to_owned());
+        }
+        for key in extensions.keys() {
+            if !valid_namespaced_identifier(key) {
+                errors.push(format!("invalid or unnamespaced extension {key:?}"));
             }
         }
-        Err(error) if error.starts_with("missing key capabilities") => {}
-        Err(error) => errors.push(error),
     }
-
-    match json_object_keys(source, "extensions") {
-        Ok(extensions) => {
-            if extensions.len() > 64 {
-                errors.push("too many extensions".to_owned());
-            }
-            for extension in extensions {
-                if !valid_identifier(&extension) || !extension.contains('.') {
-                    errors.push(format!("invalid or unnamespaced extension {extension:?}"));
-                }
+    let versions = document.get("protocol_versions").and_then(Value::as_object);
+    if let Some(versions) = versions {
+        let min = versions.get("min_major").and_then(Value::as_u64);
+        let max = versions.get("max_major").and_then(Value::as_u64);
+        if let (Some(min), Some(max)) = (min, max) {
+            if min > max {
+                errors.push("invalid protocol major-version range".to_owned());
             }
         }
-        Err(error) if error.starts_with("missing key extensions") => {}
-        Err(error) => errors.push(error),
     }
-
-    errors.sort();
-    errors.dedup();
     errors
 }
 
-fn run(root: &Path) -> Result<(), String> {
-    let directory = root.join("conformance/fixtures");
-    let mut entries = fs::read_dir(&directory)
-        .map_err(|error| format!("failed reading {}: {error}", directory.display()))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("failed enumerating fixtures: {error}"))?;
-    entries.sort_by_key(|entry| entry.file_name());
+fn realtime_invariants(document: &Value, kind: &str) -> Vec<String> {
+    let mut errors = Vec::new();
+    if kind == "realtime-envelope" {
+        if let Some(recipients) = document.get("recipients").and_then(Value::as_array) {
+            let mut identities = BTreeSet::new();
+            for recipient in recipients {
+                let key = recipient.get("agent_key").and_then(Value::as_str);
+                let instance = recipient.get("instance_id").and_then(Value::as_str);
+                if let (Some(key), Some(instance)) = (key, instance) {
+                    if !identities.insert((key.to_owned(), instance.to_owned())) {
+                        errors.push(format!("duplicate recipient identity {key}/{instance}"));
+                    }
+                }
+            }
+        }
+    }
+    if kind == "acknowledgement" {
+        let status = document.get("status").and_then(Value::as_str);
+        let reason_required = matches!(
+            status,
+            Some("rejected" | "expired" | "unauthorized" | "stale_lease")
+        );
+        if reason_required
+            && document
+                .get("reason_code")
+                .and_then(Value::as_str)
+                .is_none()
+        {
+            errors.push("acknowledgements for rejected, expired, unauthorized, or stale leases require reason_code".to_owned());
+        }
+    }
+    errors
+}
 
+fn fixture_definition(name: &str) -> Option<(&'static str, &'static str)> {
+    if name.contains("realtime-envelope") {
+        Some(("bridge.schema.json", "realtimeEnvelope"))
+    } else if name.contains("acknowledgement") {
+        Some(("bridge.schema.json", "acknowledgement"))
+    } else if name.contains("work-handoff") {
+        Some(("bridge.schema.json", "workHandoff"))
+    } else {
+        None
+    }
+}
+
+fn semantic_kind(name: &str) -> &'static str {
+    if name.contains("realtime-envelope") {
+        "realtime-envelope"
+    } else if name.contains("acknowledgement") {
+        "acknowledgement"
+    } else if name.contains("work-handoff") {
+        "work-handoff"
+    } else {
+        "service-descriptor"
+    }
+}
+
+fn validate_fixture(
+    document: &Value,
+    name: &str,
+    resources: &[(String, Value)],
+    registry: &Registry<'_>,
+) -> Result<Vec<String>, String> {
+    let semantic_kind = semantic_kind(name);
+    let schema = if let Some((schema, definition)) = fixture_definition(name) {
+        json!({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": format!("{SCHEMA_BASE}{name}.fixture.json"),
+            "$ref": format!("{schema}#/$defs/{definition}"),
+        })
+    } else {
+        resources
+            .iter()
+            .find(|(id, _)| id.ends_with("service-descriptor.schema.json"))
+            .map(|(_, value)| value.clone())
+            .ok_or_else(|| "service-descriptor.schema.json is missing".to_owned())?
+    };
+
+    let validator = jsonschema::options()
+        .with_draft(Draft::Draft202012)
+        .with_registry(registry)
+        .with_base_uri(SCHEMA_BASE)
+        .should_validate_formats(true)
+        .build(&schema)
+        .map_err(|error| format!("invalid validator for {name}: {error}"))?;
+    let mut errors = validator
+        .iter_errors(document)
+        .map(|error| error.to_string())
+        .collect::<Vec<_>>();
+    if semantic_kind == "service-descriptor" {
+        errors.extend(descriptor_invariants(document));
+    } else {
+        errors.extend(realtime_invariants(document, semantic_kind));
+    }
+    Ok(errors)
+}
+
+fn load_generated_resources(root: &Path) -> Result<Vec<(String, Value)>, String> {
+    let mut paths = fs::read_dir(root)
+        .map_err(|error| {
+            format!(
+                "failed reading generated TypeSpec schemas {}: {error}",
+                root.display()
+            )
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("failed enumerating generated TypeSpec schemas: {error}"))?
+        .into_iter()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
+        .collect::<Vec<PathBuf>>();
+    paths.sort();
+
+    let mut resources = Vec::new();
+    for path in paths {
+        let mut schema = parse_json(&path)?;
+        if !jsonschema::draft202012::meta::is_valid(&schema) {
+            return Err(format!(
+                "generated {} is not a valid Draft 2020-12 schema",
+                path.display()
+            ));
+        }
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| format!("non-UTF-8 generated schema name: {}", path.display()))?;
+        let id = format!("{SCHEMA_BASE}{file_name}");
+        schema
+            .as_object_mut()
+            .ok_or_else(|| format!("generated {file_name} must be an object schema"))?
+            .insert("$id".to_owned(), Value::String(id.clone()));
+        resources.push((id, schema));
+    }
+    Ok(resources)
+}
+
+fn generated_file_for_fixture(name: &str) -> &'static str {
+    if name.contains("realtime-envelope") {
+        "RealtimeEnvelope.json"
+    } else if name.contains("acknowledgement") {
+        "Acknowledgement.json"
+    } else if name.contains("work-handoff") {
+        "WorkHandoff.json"
+    } else {
+        "ServiceDescriptor.json"
+    }
+}
+
+fn schema_instance_errors(
+    document: &Value,
+    schema: &Value,
+    registry: &Registry<'_>,
+) -> Result<Vec<String>, String> {
+    let validator = jsonschema::options()
+        .with_draft(Draft::Draft202012)
+        .with_registry(registry)
+        .with_base_uri(SCHEMA_BASE)
+        .should_validate_formats(true)
+        .build(schema)
+        .map_err(|error| format!("generated schema could not compile: {error}"))?;
+    Ok(validator
+        .iter_errors(document)
+        .map(|error| error.to_string())
+        .collect())
+}
+
+fn validate_generated_projection(
+    root: &Path,
+    generated_root: &Path,
+    authored_resources: &[(String, Value)],
+    authored_registry: &Registry<'_>,
+) -> Result<(), String> {
+    let generated_resources = load_generated_resources(generated_root)?;
+    let generated_registry = build_registry(&generated_resources)?;
+    let fixture_directory = root.join("conformance/fixtures");
     let mut failures = Vec::new();
-    for entry in entries {
-        let path = entry.path();
+    let mut checked = 0usize;
+
+    for entry in fs::read_dir(&fixture_directory)
+        .map_err(|error| format!("failed reading {}: {error}", fixture_directory.display()))?
+    {
+        let path = entry
+            .map_err(|error| format!("failed reading conformance fixture entry: {error}"))?
+            .path();
         if path.extension().and_then(|value| value.to_str()) != Some("json") {
             continue;
         }
         let name = path
             .file_name()
             .and_then(|value| value.to_str())
-            .ok_or_else(|| "non-UTF-8 fixture name".to_owned())?;
-        let source = fs::read_to_string(&path)
-            .map_err(|error| format!("failed reading {}: {error}", path.display()))?;
-        let errors = validate_descriptor(&source);
+            .ok_or_else(|| format!("non-UTF-8 fixture name: {}", path.display()))?;
+        let document = match parse_json(&path) {
+            Ok(document) => document,
+            Err(_) => continue,
+        };
+        let generated_file = generated_file_for_fixture(name);
+        let generated_schema = generated_resources
+            .iter()
+            .find(|(id, _)| id.ends_with(generated_file))
+            .map(|(_, schema)| schema)
+            .ok_or_else(|| format!("generated TypeSpec schema {generated_file} is missing"))?;
+        let authored_errors =
+            validate_fixture(&document, name, authored_resources, authored_registry)?;
+        let mut generated_errors =
+            schema_instance_errors(&document, generated_schema, &generated_registry)?;
+        let semantic_kind = semantic_kind(name);
+        if semantic_kind == "service-descriptor" {
+            generated_errors.extend(descriptor_invariants(&document));
+        } else {
+            generated_errors.extend(realtime_invariants(&document, semantic_kind));
+        }
+        if authored_errors.is_empty() != generated_errors.is_empty() {
+            failures.push(format!(
+                "{name}: independently authored JSON Schema and generated TypeSpec schema disagree; authored={authored_errors:?}, generated={generated_errors:?}"
+            ));
+        }
+        checked += 1;
+    }
+
+    if failures.is_empty() {
+        println!(
+            "TYPE_SPEC_JSON_SCHEMA_PARITY: OK ({checked} fixtures validated by both authorities)"
+        );
+        Ok(())
+    } else {
+        Err(failures.join("\n  - "))
+    }
+}
+
+fn run(root: &Path) -> Result<(), String> {
+    let resources = load_schema_resources(root)?;
+    let registry = build_registry(&resources)?;
+    let fixture_directory = root.join("conformance/fixtures");
+    let mut paths = fs::read_dir(&fixture_directory)
+        .map_err(|error| format!("failed reading {}: {error}", fixture_directory.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("failed enumerating fixtures: {error}"))?
+        .into_iter()
+        .map(|entry| entry.path())
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
+        .collect::<Vec<PathBuf>>();
+    paths.sort();
+
+    let mut failures = Vec::new();
+    for path in paths {
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| format!("non-UTF-8 fixture name: {}", path.display()))?;
+        let document = match parse_json(&path) {
+            Ok(document) => document,
+            Err(error) => {
+                if name.starts_with("invalid-") {
+                    println!("  {name}: rejected (as required) -- {error}");
+                    continue;
+                }
+                failures.push(format!("{name}: {error}"));
+                continue;
+            }
+        };
+        let errors = validate_fixture(&document, name, &resources, &registry)?;
         let should_fail = name.starts_with("invalid-");
         if should_fail && errors.is_empty() {
             failures.push(format!("{name}: expected rejection, but it validated"));
@@ -362,7 +523,10 @@ fn run(root: &Path) -> Result<(), String> {
     }
 
     if failures.is_empty() {
-        println!("CONFORMANCE: OK (Rust)");
+        println!("CONFORMANCE: OK (Rust JSON Schema validator)");
+        if let Some(generated_root) = std::env::args().nth(2) {
+            validate_generated_projection(root, Path::new(&generated_root), &resources, &registry)?;
+        }
         Ok(())
     } else {
         Err(failures.join("\n  - "))
@@ -382,41 +546,28 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_descriptor;
-
-    const VALID: &str = r#"{
-      "schema_version": 1,
-      "protocol": "agent-pontifex.bridge",
-      "protocol_versions": {"min_major": 1, "max_major": 1},
-      "service": "bridge",
-      "implementation": "agent-pontifex-community",
-      "capabilities": ["bridge.agents.register", "bridge.messages.post"],
-      "extensions": {"vendor.feature": {}}
-    }"#;
+    use super::{parse_json_text, realtime_invariants};
 
     #[test]
-    fn accepts_valid_descriptor() {
-        assert!(validate_descriptor(VALID).is_empty());
+    fn rejects_duplicate_object_keys() {
+        let result = parse_json_text(r#"{"schema_version": 1, "schema_version": 2}"#);
+        assert!(result.is_err(), "duplicate keys must fail closed");
     }
 
     #[test]
-    fn rejects_protocol_mismatch() {
-        let invalid = VALID.replace("agent-pontifex.bridge", "agent-pontifex.coordinator");
-        assert!(validate_descriptor(&invalid).iter().any(|error| error.contains("mismatch")));
+    fn rejects_duplicate_realtime_recipient_identity() {
+        let document = serde_json::json!({
+            "recipients": [
+                {"agent_key": "agent.one", "instance_id": "one"},
+                {"agent_key": "agent.one", "instance_id": "one"}
+            ]
+        });
+        assert!(!realtime_invariants(&document, "realtime-envelope").is_empty());
     }
 
     #[test]
-    fn rejects_unsorted_capabilities() {
-        let invalid = VALID.replace(
-            "bridge.agents.register\", \"bridge.messages.post",
-            "bridge.messages.post\", \"bridge.agents.register",
-        );
-        assert!(validate_descriptor(&invalid).iter().any(|error| error.contains("sorted")));
-    }
-
-    #[test]
-    fn rejects_unnamespaced_extension() {
-        let invalid = VALID.replace("vendor.feature", "feature");
-        assert!(validate_descriptor(&invalid).iter().any(|error| error.contains("extension")));
+    fn requires_reason_for_stale_lease_acknowledgement() {
+        let document = serde_json::json!({"status": "stale_lease"});
+        assert!(!realtime_invariants(&document, "acknowledgement").is_empty());
     }
 }

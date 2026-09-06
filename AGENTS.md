@@ -5,6 +5,10 @@ Repository-specific rules:
 
 1. **Never generate one authority from the other.** `typespec/main.tsp` and `schemas/*.json`
    are co-equal and independently authored. A generator that overwrites either is a defect.
+   CI emits TypeSpec's JSON Schema B into ignored `target/typespec-json-schema/`; it never
+   commits or overwrites authored JSON Schema A. The Rust gates validate fixtures with A,
+   validate them again with B, and fail unless the verdicts and configured wire shapes
+   (types, requiredness, enum values, and scalar/array constraints) agree.
 2. **Never add a field to a projection alone.** `typescript/` and `dart/` follow the
    authorities. Change both authored authorities first, re-run parity, then update projections.
 3. **Do not add a Rust type crate here.** The Rust contract is
@@ -13,6 +17,8 @@ Repository-specific rules:
    vendor-specific fields — those belong in namespaced capabilities/extensions.
 5. `tools/check-peer-parity.rs` and `tools/run-conformance.rs` must compile with warnings
    denied and pass before any merge. They are required fail-closed checks, not advisory.
+   Both are Cargo binaries using the pinned lockfile; do not replace them with raw-text
+   key searches or an unpinned compiler invocation.
 6. Prefer Rust for systems, parity, conformance, migration, and release tooling. Do not
    introduce Python for these paths when a dependency-free or pinned Rust implementation is
    reasonable.
