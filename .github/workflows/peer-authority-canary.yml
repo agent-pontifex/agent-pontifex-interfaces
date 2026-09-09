@@ -51,7 +51,7 @@ jobs:
           node-version: 22.16.0
 
       - name: Compare independent peer authorities and emit Contract IR
-        uses: ORESoftware/typespec-json-schema-validator@3171025cbe03a7026a71ce94eea18c910e1431b2
+        uses: ORESoftware/typespec-json-schema-validator@2281843126ab644607b11cf8281d84f382d68dfc
         with:
           typespec: schema-authority/canary/main.tsp
           schema: schema-authority/canary/authored.schema.json
@@ -78,7 +78,7 @@ jobs:
           assert.equal(manifest.repository, process.env.GITHUB_REPOSITORY);
           assert.equal(manifest.repositoryRole, 'interfaces');
           assert.equal(manifest.canonicalAuthorityRepository, process.env.GITHUB_REPOSITORY);
-          assert.equal(manifest.validator.actionCommit, '3171025cbe03a7026a71ce94eea18c910e1431b2');
+          assert.equal(manifest.validator.actionCommit, '2281843126ab644607b11cf8281d84f382d68dfc');
           assert.equal(manifest.authorityModel.precedence, 'none');
           assert.equal(manifest.admission.allowFallbackAuthority, false);
           assert.ok(manifest.downstreamResponsibilities.includes('keep-typescript-and-dart-as-projections'));
