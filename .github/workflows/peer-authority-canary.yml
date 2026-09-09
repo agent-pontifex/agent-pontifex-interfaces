@@ -1,28 +1,33 @@
-name: peer-authority-canary
+name: peer-authority-contract-ir
 
 on:
   pull_request:
     paths:
       - 'schema-authority/canary/**'
+      - 'contract-admission/contract-ir-consumer.json'
       - '.github/workflows/peer-authority-canary.yml'
   push:
     branches:
       - main
+      - dev
     paths:
       - 'schema-authority/canary/**'
+      - 'contract-admission/contract-ir-consumer.json'
       - '.github/workflows/peer-authority-canary.yml'
+  schedule:
+    - cron: '47 6 * * 1'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: peer-authority-canary-${{ github.workflow }}-${{ github.ref }}
+  group: peer-authority-contract-ir-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  parity:
-    name: compare independent TypeSpec and JSON Schema canary authorities
+  admission:
+    name: compare peers and verify parity-approved Contract IR
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -45,21 +50,84 @@ jobs:
         with:
           node-version: 22.16.0
 
-      - name: Compare independent peer authorities
-        uses: ORESoftware/typespec-json-schema-validator@282883afc4645f3303ed746bdb1e1571475724c5
+      - name: Compare independent peer authorities and emit Contract IR
+        uses: ORESoftware/typespec-json-schema-validator@2281843126ab644607b11cf8281d84f382d68dfc
         with:
           typespec: schema-authority/canary/main.tsp
           schema: schema-authority/canary/authored.schema.json
           report: .typespec-json-schema-validator/report.json
           sarif: .typespec-json-schema-validator/report.sarif
+          contract_ir: .typespec-json-schema-validator/contract-ir.json
           output_dir: .typespec-json-schema-validator/generated
+          max_probes: '64'
           quiet: 'true'
 
-      - name: Retain deterministic parity evidence
+      - name: Verify authority-owner admission and projection boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+
+          const manifest = JSON.parse(readFileSync('contract-admission/contract-ir-consumer.json', 'utf8'));
+          const report = JSON.parse(readFileSync('.typespec-json-schema-validator/report.json', 'utf8'));
+          const ir = JSON.parse(readFileSync('.typespec-json-schema-validator/contract-ir.json', 'utf8'));
+          const sha = /^[a-f0-9]{64}$/;
+
+          assert.equal(manifest.repository, process.env.GITHUB_REPOSITORY);
+          assert.equal(manifest.repositoryRole, 'interfaces');
+          assert.equal(manifest.canonicalAuthorityRepository, process.env.GITHUB_REPOSITORY);
+          assert.equal(manifest.validator.actionCommit, '2281843126ab644607b11cf8281d84f382d68dfc');
+          assert.equal(manifest.authorityModel.precedence, 'none');
+          assert.equal(manifest.admission.allowFallbackAuthority, false);
+          assert.ok(manifest.downstreamResponsibilities.includes('keep-typescript-and-dart-as-projections'));
+          assert.ok(manifest.downstreamResponsibilities.includes('keep-rust-contract-in-agent-sdk-protocol'));
+
+          assert.equal(report.schema, 'ores.typespec-json-schema-validator.report/v1');
+          assert.equal(report.status, 'passed');
+          assert.equal(report.zeroUnexplainedFindings, true);
+          assert.deepEqual(report.findings, []);
+          assert.match(report.runId, sha);
+
+          assert.equal(ir.schema, manifest.validator.contractIrSchema);
+          assert.equal(ir.status, 'passed');
+          assert.equal(ir.admissible, true);
+          assert.equal(ir.role, 'downstream-derived-parity-artifact');
+          assert.equal(ir.editableAuthority, false);
+          assert.deepEqual(ir.authorities, {
+            typespec: 'independently-authored',
+            jsonSchema: 'independently-authored',
+            generatedJsonSchema: 'comparison-evidence-only',
+            precedence: 'none',
+          });
+          assert.match(ir.irId, sha);
+          assert.equal(ir.admission.receipt.schema, report.schema);
+          assert.equal(ir.admission.receipt.runId, report.runId);
+          assert.equal(ir.admission.receipt.status, 'passed');
+          assert.equal(ir.admission.receipt.zeroUnexplainedFindings, true);
+          assert.match(ir.admission.receipt.digest, sha);
+          for (const field of [
+            'exactInputDigests',
+            'directDeclarationInventory',
+            'generatedSchemaComparison',
+            'differentialInstanceValidation',
+            'zeroUnexplainedFindings',
+          ]) assert.equal(ir.admission.requirements[field], true);
+          assert.ok(ir.admission.scope.admittedDeclarations > 0);
+          NODE
+
+      - name: Run repository peer-parity and conformance checks
+        run: |
+          set -euo pipefail
+          python3 tools/check_peer_parity.py
+          python3 tools/run_conformance.py
+
+      - name: Retain deterministic receipt, Contract IR, SARIF, and witness
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: peer-authority-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          name: peer-authority-contract-ir-${{ github.run_id }}-${{ github.run_attempt }}
           path: .typespec-json-schema-validator
           include-hidden-files: true
           if-no-files-found: error
