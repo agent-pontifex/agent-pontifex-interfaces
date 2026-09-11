@@ -14,10 +14,12 @@ Neither is generated from the other, and neither may overwrite the other:
 | TypeSpec | `typespec/main.tsp` | `IR_T → SQL_T → Protobuf/proto3 → gRPC → wire clients` |
 | JSON Schema | `schemas/*.json` | `IR_J → interfaces/types/validators → SQL_J → HTTP/write clients` |
 
-`tools/check_peer_parity.py` cross-checks them and **fails closed**. An unexplained
-mismatch blocks publication, merge, release and deployment. It compares enum member sets
-and model field names with optionality — the things that actually drift — and reports
-anything it cannot parse as a failure rather than skipping it silently.
+TypeSpec emits a temporary JSON Schema B under `target/typespec-json-schema/`; that output
+is never committed and never overwrites JSON Schema A. The Rust gates independently
+validate fixtures against authored JSON Schema A and generated B, then require matching
+accept/reject verdicts. `tools/check-peer-parity.rs` also compares configured enums,
+requiredness, wire types, scalar constraints, array bounds, unions, and nested property
+shapes. An unexplained mismatch blocks publication, merge, release and deployment.
 
 ## Language projections
 
@@ -34,7 +36,7 @@ the language-neutral authority; the Rust crate is a consumer of it.
 
 ## Invariants JSON Schema cannot express
 
-Some protocol rules are structural and are enforced in `tools/run_conformance.py` and in
+Some protocol rules are structural and are enforced in `tools/run-conformance.rs` and in
 each projection's `validate()`:
 
 - **Capabilities must be sorted.** Negotiation is deterministic; an unsorted list is invalid.
@@ -53,11 +55,23 @@ as optional keys is a contract break.
 ## Verify locally
 
 ```bash
-pip install jsonschema
-python3 tools/check_peer_parity.py     # authority parity, fails closed
-python3 tools/run_conformance.py       # fixtures; invalid-*.json MUST be rejected
-cd langs/typescript && npx tsc -p tsconfig.json --noEmit
-cd ../dart && dart analyze --fatal-infos
+npm ci --prefix typespec --ignore-scripts --no-audit --no-fund
+typespec/node_modules/.bin/tsp compile typespec/main.tsp --no-emit
+typespec/node_modules/.bin/tsp compile typespec/main.tsp \
+  --emit @typespec/json-schema \
+  --option @typespec/json-schema.emitAllModels=true \
+  --option @typespec/json-schema.file-type=json \
+  --option @typespec/json-schema.int64-strategy=number \
+  --option @typespec/json-schema.seal-object-schemas=true \
+  --output-dir target/typespec-json-schema
+cargo test --locked --all-targets
+cargo run --locked --bin check-peer-parity -- \
+  . target/typespec-json-schema/@typespec/json-schema
+cargo run --locked --bin run-conformance -- \
+  . target/typespec-json-schema/@typespec/json-schema
+npx --yes --package typescript@5.9.2 tsc -p langs/typescript/tsconfig.json --noEmit
+dart pub get --directory langs/dart
+dart analyze --fatal-infos langs/dart
 ```
 
 Fixtures named `invalid-*.json` are expected to be **rejected**. A fixture that should fail

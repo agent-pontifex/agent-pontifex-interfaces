@@ -33,6 +33,7 @@
     },
     "errorResponse": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["error"],
       "properties": {
         "ok": { "type": "boolean" },
